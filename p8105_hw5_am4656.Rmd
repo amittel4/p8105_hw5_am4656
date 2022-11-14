@@ -1,0 +1,53 @@
+---
+title: "p8105_hw5_am4656"
+author: "Aaron Mittel"
+date: "2022-11-11"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Problem 1
+In this problem, we create a dataframe containing data from participants in the downloaded "data" folder. Each participant's data is saved in a separate file within this folder, which can be mapped in iterative fashion using the read_csv function.
+```{r creating study data dataframe from files in data folder, message = FALSE, include = TRUE, echo = FALSE}
+file_names =
+list.files(path = "./data") %>% 
+  str_replace("con","data/con") %>% 
+  str_replace("exp","data/exp") %>% 
+  as_tibble()
+
+study_data = map_dfr(file_names, read_csv) %>% 
+  mutate(
+    id = row_number(),
+    arm = ifelse(id < 11, "control","experimental"),
+  ) %>% 
+  relocate(id,arm) %>% 
+  pivot_longer(
+    week_1:week_8,
+    values_to = "value",
+    names_to = "week") %>% 
+  mutate(
+    week = (str_replace(week, "week_","")),
+    week = as.numeric(week)) %>% 
+  group_by(week)
+
+study_data %>% 
+  ggplot(aes(x = week, y = value, color = factor(id))) +
+  geom_line() + geom_point() +
+  facet_grid(~arm) +
+  viridis::scale_color_viridis(discrete = TRUE)
+```
+
+In general, patients in the experimental group have values that increase over time. Patients in the control group have values that remain relatively stable over time.
+
+# Problem 2
+```{r, message = FALSE, include = FALSE}
+homicide_data = 
+  read_csv("./homicide-data.csv") %>% 
+  janitor::clean_names()
+```
+
+This dataframe contains 12 columns which report location, assigned case id ('uid'), date of homicide,  victim demographics, and case outcome (`disposition`). There are `r nrow(homicide_data)` rows and `r homicide_data %>% select(city) %>% distinct %>% nrow` distinct cities.
