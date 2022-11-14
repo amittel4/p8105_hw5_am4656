@@ -44,10 +44,58 @@ study_data %>%
 In general, patients in the experimental group have values that increase over time. Patients in the control group have values that remain relatively stable over time.
 
 # Problem 2
-```{r, message = FALSE, include = FALSE}
+```{r creating homicide dataframe, message = FALSE, include = FALSE}
 homicide_data = 
   read_csv("./homicide-data.csv") %>% 
-  janitor::clean_names()
+  janitor::clean_names() %>% 
+  mutate(
+    city_state = str_c(city, ", ", state))
 ```
 
-This dataframe contains 12 columns which report location, assigned case id ('uid'), date of homicide,  victim demographics, and case outcome (`disposition`). There are `r nrow(homicide_data)` rows and `r homicide_data %>% select(city) %>% distinct %>% nrow` distinct cities.
+This dataframe contains 12 columns which report location, assigned case id ('uid'), date of homicide,  victim demographics, and case outcome (`disposition`) of homicides from the decade preceding 2018. There are `r nrow(homicide_data)` rows and `r homicide_data %>% select(city) %>% distinct %>% nrow` distinct cities.
+
+```{r creating homicide_data dataframe focusing on solved vs unsolved homicides, include = FALSE, message = FALSE}
+homicide_data_solved =
+  homicide_data %>%
+  group_by(city_state, disposition) %>% 
+  filter(
+    disposition == "Closed by arrest" | disposition == "Open/No arrest" | disposition == "Closed without arrest") %>% 
+  summarize(
+    number = n()) %>% 
+  pivot_wider(
+    names_from = disposition,
+    values_from = number
+  ) %>% 
+  rowwise() %>% 
+  mutate(
+    unsolved = sum(c_across("Closed without arrest":"Open/No arrest")),
+    total = sum(c_across("Closed by arrest":"Open/No arrest")),
+    proportion_unsolved = unsolved/total)
+```
+
+## Estimating the Proportion of Unsolved Homicides in Baltimore, MD
+```{r baltimore focused solved vs unsolved dataframe, include = TRUE, echo = FALSE, message = FALSE}
+homicide_data_solved_baltimore =
+homicide_data_solved %>% 
+  filter(
+    city_state == "Baltimore, MD")
+
+prop.test(x = homicide_data_solved_baltimore %>% pull(unsolved), n = homicide_data_solved_baltimore %>% pull(total), alternative = c("two.sided"), conf.level = 0.95) %>% 
+  broom::tidy() %>% 
+  select(estimate, conf.low, conf.high) %>% 
+  knitr::kable(digits = 2, caption = "Table 1. Estimate and 95% CI for proportion of murders that are unsolved in Baltimore, MD")
+```
+
+```{r all city focused estimates of unsolved homicides, include = TRUE, echo = FALSE, message = FALSE}
+prop.test.homicide = function(df) {
+  prop.test(x = df %>% pull(unsolved), n = df %>% pull(total), alternative = c("two.sided"), conf.level = 0.95)
+}
+
+homicide_data_solved_nest =
+  nest(homicide_data_solved, data = "Closed by arrest":"proportion_unsolved")
+
+prop.test.homicide(homicide_data_solved_nest$data[[3]])
+
+map(homicide_data_solved_nest$data, prop.test.homicide)
+```
+
