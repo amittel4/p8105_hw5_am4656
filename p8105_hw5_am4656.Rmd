@@ -40,7 +40,10 @@ study_data %>%
   ggplot(aes(x = week, y = value, color = factor(id))) +
   geom_line() + geom_point() +
   facet_grid(~arm) +
-  viridis::scale_color_viridis(discrete = TRUE)
+  viridis::scale_color_viridis(discrete = TRUE) +
+  labs(
+    title = "Figure 1. Spaghetti plot of observations on each subject over time"
+  )
 ```
 
 In general, patients in the experimental group have values that increase over time. Patients in the control group have values that remain relatively stable over time.
@@ -125,14 +128,14 @@ homicide_data_estimates_clean =
   select(-data,-statistic,-parameter,-p.value,-method,-alternative)
 ```
 
-```{r presenting data as a kable, include = TRUE, echo = FALSE, warning = FALSE}
+```{r presenting data as a kable, include = TRUE, echo = FALSE, message = FALSE}
 homicide_data_estimates_clean %>% 
   knitr::kable(digits = 2, caption = "Table 2. Estimated proportion of unsolved murders (and 95% CI) in each city with data in the data set")
 ```
 
 
 The plot in Figure 1, below, shows the estimates and CIs (y-axis) for each city (x-axis). Cities have been organized according to the proportion of unsolved homicides.
-```{r plot w estimates and CIs for each city, include = TRUE, echo = FALSE, warning = FALSE}
+```{r plot w estimates and CIs for each city, include = TRUE, echo = FALSE, message = FALSE}
 estimates_plot = 
   homicide_data_estimates_clean %>% 
   mutate(
@@ -142,7 +145,7 @@ estimates_plot =
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   labs(
-    title = "Figure 1. Plot of Unsolved Murder Proportion by City, State",
+    title = "Figure 2. Plot of Unsolved Murder Proportion by City, State",
     x = "",
     y = "Prop. Murders Unsolved",
     caption = "Data from 2008 - 2018"
@@ -153,3 +156,152 @@ estimates_plot
 
 
 # Problem 3
+
+This problem uses simulation to explore how power of a 1-sample t-test changes as sample mean changes during sampling.
+
+First, I generated 5000 datasets from a normal distribution of n = 30 subjects who have sigma = 5 and a mean of 0. I performed a simple t-test to determine if the sampled mean is significantly different than the true, set mean of 0 using a de novo function `sim_mean_ttest`. The figure indicates the outcome of 5000-fold iterative process.
+```{r sampling around mean 0, include = TRUE, message = FALSE, echo = FALSE}
+sim_mean_ttest = function(true_mean) {
+  sim_data = tibble(
+    x = rnorm(n = 30, mean = true_mean, sd = 5)
+  )
+  
+  sim_data %>% 
+    summarize(
+      mu_hat = mean(x), 
+      t_test = t.test(x, alternative = "two.sided", mu = 0, paired = FALSE, alpha = 0.05) %>%
+        broom::tidy()
+    )
+}
+
+sample_df_mean0 =
+  expand.grid(
+    true_mean = 0,
+    iteration = 1:5000
+  ) %>% 
+  mutate(
+    prob3_estimates_df = map(true_mean, sim_mean_ttest)
+  ) %>% 
+  unnest(prob3_estimates_df) %>% 
+  unnest(t_test)
+
+sample_df_mean0 %>% 
+  ggplot(aes(x = mu_hat)) + 
+  geom_density() + 
+  labs(
+    title = "Figure 3. Density of mu_hat indicating normal distribution; 5000 iterations",
+    caption = "Constant: 30 subjects, standard deviation of 5"
+  )
+
+sample_df_mean0_tidy = 
+sample_df_mean0 %>% 
+  pivot_longer(
+    mu_hat:conf.high,
+    names_to = "parameter",
+    values_to = "estimate") %>% 
+  relocate(iteration) %>% 
+  select(iteration, true_mean, parameter, estimate)
+```
+
+Now, repeating this process when sample mean varies from 1 - 6:
+```{r sampling around mean 1 - 6, include = FALSE, message = FALSE, echo = FALSE}
+sample_df_means = 
+  expand.grid(
+    true_mean = c(1,2,3,4,5,6),
+    iteration = 1:5000
+  ) %>% 
+  mutate(
+    prob3_b_estimates_df = map(true_mean, sim_mean_ttest)
+  ) %>% 
+  unnest(prob3_b_estimates_df) %>% 
+  unnest(t_test)
+
+sample_df_means
+```
+
+```{r multiple means density plot, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sample_df_means_plot = 
+  sample_df_means %>% 
+  group_by(true_mean) %>% 
+  ggplot(aes(x = mu_hat)) + 
+  geom_density() + 
+  facet_grid(. ~ true_mean) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  labs(
+    title = "Figure 4. Density of mu_hat indicating normal distribution, by true mean; 5000 iterations",
+    caption = "Constant: 30 subjects, standard deviation of 5"    
+  )
+
+sample_df_means_plot
+```
+
+The null hypothesis for this t-test is that the difference between the sample mean and the true mean is 0. When p < 0.05, we reject the null.
+
+```{r p rejection plot, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+rejection_plot = 
+sample_df_means %>% 
+  group_by(true_mean) %>% 
+  mutate(
+    significant = if_else(p.value < 0.05, "significant", "not_significant")
+  ) %>% 
+  select(true_mean, iteration, mu_hat, estimate, p.value, significant) %>% 
+  group_by(true_mean, significant) %>% 
+  summarize(
+    n = n()) %>% 
+  pivot_wider(
+    names_from = significant,
+    values_from = n
+  ) %>% 
+  replace(is.na(.),0) %>% 
+  mutate(
+    proportion_significant = (significant/(significant + not_significant))
+  ) %>% 
+  ggplot(aes(x = true_mean, y = proportion_significant)) +
+  geom_point() + geom_smooth() +
+  labs(
+    title = "Figure 5. Proportion of times rejecting null; 5000 iterations",
+    caption = "Null hypothesis: no difference between sample and true mean.",
+    x = "True Mean",
+    y = "Proportion of Times Rejecting Null Hypothesis (Power)"
+  ) +
+  theme_minimal()
+
+rejection_plot
+```
+
+Below, I have made a plot showing the average estimate of sample me on the y axis and the true mean on the x axis. The smoothed line indicates comparison among all estimated means while the overlaid points indicate only means in which the null hypothesis was rejected.
+```{r sample vs true mean plot setup, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+mean_compare_data =
+  sample_df_means %>% 
+  group_by(true_mean) %>% 
+  summarize(
+    mean_mu_hat = mean(mu_hat)
+  )
+
+mean_significant_data = 
+  sample_df_means %>% 
+  filter(p.value < 0.05) %>% 
+  group_by(true_mean) %>% 
+  summarize(
+    mean_mu_hat_signif = mean(mu_hat)
+  )
+```
+
+```{r comparison plot, include = TRUE, echo = FALSE, message = FALSE}
+mean_comparison_plot = 
+  ggplot(data = mean_compare_data, aes(x = true_mean, y = mean_mu_hat)) +
+  geom_smooth() + 
+  geom_point(data = mean_significant_data, aes(x = true_mean, y = mean_mu_hat_signif)) +
+  labs(
+    title = "Figure 6. Comparison of sample mean versus true mean among ",
+    caption = "5000 iterations",
+    x = "True Mean",
+    y = "Average Estimate of Sample Mean"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+mean_comparison_plot
+```
+
+_The average of sample mean for which the null is rejected is approximately equal to the true value of the mean only when the true mean is larger than 3. This reflects the influence of the standard deviation of 5, leading to greater spread in data at smaller mean values._
