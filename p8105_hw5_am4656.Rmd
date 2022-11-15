@@ -287,7 +287,7 @@ mean_significant_data =
   )
 ```
 
-```{r comparison plot, include = TRUE, echo = FALSE, message = FALSE}
+```{r comparison plot, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
 mean_comparison_plot = 
   ggplot(data = mean_compare_data, aes(x = true_mean, y = mean_mu_hat)) +
   geom_smooth() + 
