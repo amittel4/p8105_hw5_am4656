@@ -12,7 +12,8 @@ set.seed(1)
 ```
 
 # Problem 1
-In this problem, we create a dataframe containing data from participants in the downloaded "data" folder. Each participant's data is saved in a separate file within this folder, which can be mapped in iterative fashion using the read_csv function.
+In this problem, we created a dataframe containing data from participants in the downloaded "data" folder. Each participant's data is saved in a separate file within this folder, which can be mapped in iterative fashion using the read_csv function. A spaghetti plot shows observations on each subject over time.
+
 ```{r creating study data dataframe from files in data folder, message = FALSE, include = TRUE, echo = FALSE}
 file_names =
 list.files(path = "./data") %>% 
@@ -44,6 +45,7 @@ study_data %>%
 
 In general, patients in the experimental group have values that increase over time. Patients in the control group have values that remain relatively stable over time.
 
+
 # Problem 2
 ```{r creating homicide dataframe, message = FALSE, include = FALSE}
 homicide_data = 
@@ -53,7 +55,7 @@ homicide_data =
     city_state = str_c(city, ", ", state))
 ```
 
-This dataframe contains 12 columns which report location, assigned case id ('uid'), date of homicide,  victim demographics, and case outcome (`disposition`) of homicides from the decade preceding 2018. There are `r nrow(homicide_data)` rows and `r homicide_data %>% select(city) %>% distinct %>% nrow` distinct cities. Cities with missing data were removed.
+This dataframe contains 12 columns which report location, assigned case id (`uid`), date of homicide,  victim demographics, and case outcome (`disposition`) of homicides from the decade preceding 2018. There are `r nrow(homicide_data)` rows and `r homicide_data %>% select(city) %>% distinct %>% nrow` distinct cities.
 
 ```{r creating homicide_data dataframe focusing on solved vs unsolved homicides, include = FALSE, message = FALSE}
 homicide_data_solved =
@@ -71,14 +73,16 @@ homicide_data_solved =
   mutate(
     unsolved = sum(c_across("Closed without arrest":"Open/No arrest")),
     total = sum(c_across("Closed by arrest":"Open/No arrest")),
-    proportion_unsolved = unsolved/total,
-    unsolved = as.numeric(unsolved),
-    total = as.numeric(total)) %>% 
+    proportion_unsolved = unsolved/total) %>% 
   drop_na() %>% 
   ungroup()
 ```
 
-## Estimating the Proportion of Unsolved Homicides in Baltimore, MD
+_Cities with missing data were removed._
+
+## _Estimating the Proportion of Unsolved Homicides in Baltimore, MD_
+Here, data is presented with the `estimate` of unsolved murders in Baltimore, MD as well as the associated 95% Confidence Interval (`conf.low` - `conf.high`).
+
 ```{r baltimore-focused solved vs unsolved dataframe, include = TRUE, echo = FALSE, message = FALSE}
 homicide_data_solved_baltimore =
 homicide_data_solved %>% 
@@ -91,13 +95,14 @@ prop.test(x = homicide_data_solved_baltimore %>% pull(unsolved), n = homicide_da
   knitr::kable(digits = 2, caption = "Table 1. Estimate and 95% CI for proportion of murders that are unsolved in Baltimore, MD")
 ```
 
-## Estimating the Proportion of Unsolved Homicides in All Cities in Database
-```{r all city focused estimates of unsolved homicides, include = TRUE, echo = FALSE, message = FALSE}
+## _Estimating the Proportion of Unsolved Homicides in All Cities in Database_
+Here, all cities with data were included in the analysis. Data in the Table below represents point `estimate`s for the proportion of murders which went unsolved and the associated 95% Confidence Interval (`conf.low` - `conf.high`).
+```{r all city focused estimates of unsolved homicides nested data, include = TRUE, echo = FALSE, message = FALSE}
 homicide_data_solved_nest =
   nest(homicide_data_solved, data = "Closed by arrest":"proportion_unsolved")
 ```
 
-```{r creating a function for 1-sample proportion test of each dataframe and testing it on a single city_state, include = TRUE, echo = FALSE, message = FALSE}
+```{r creating a function for 1-sample proportion test of each dataframe and testing it on a single city_state, include = FALSE, echo = FALSE, message = FALSE}
 prop_test_homicide = function(df) {
   prop.test(df$unsolved, df$total) %>% 
     broom::tidy()
@@ -106,7 +111,7 @@ prop_test_homicide = function(df) {
 prop_test_homicide(homicide_data_solved_nest$data[[35]])
 ```
 
-```{r mapping this function to all city_states within the list of data and then creating a tidy data frame with variables of interest, include = TRUE, echo = FALSE, message = FALSE}
+```{r mapping this function to all city_states within the list of data and then creating a tidy data frame with variables of interest, include = FALSE, echo = FALSE, message = FALSE}
 map(homicide_data_solved_nest$data, prop_test_homicide)
 
 homicide_data_estimates =
@@ -118,77 +123,33 @@ homicide_data_estimates =
 homicide_data_estimates_clean =
   homicide_data_estimates %>% 
   select(-data,-statistic,-parameter,-p.value,-method,-alternative)
-
-homicide_data_estimates_clean
 ```
 
-Create a plot that shows the estimates and CIs for each city – check out geom_errorbar for a way to add error bars based on the upper and lower limits. Organize cities according to the proportion of unsolved homicides.
-```{r plot w estimates and CIs for each city}
+```{r presenting data as a kable, include = TRUE, echo = FALSE, warning = FALSE}
+homicide_data_estimates_clean %>% 
+  knitr::kable(digits = 2, caption = "Table 2. Estimated proportion of unsolved murders (and 95% CI) in each city with data in the data set")
+```
+
+
+The plot in Figure 1, below, shows the estimates and CIs (y-axis) for each city (x-axis). Cities have been organized according to the proportion of unsolved homicides.
+```{r plot w estimates and CIs for each city, include = TRUE, echo = FALSE, warning = FALSE}
 estimates_plot = 
-  ggplot(homicide_data_estimates_clean, aes(x = city_state, y = estimate)) +
-  geom_point(aes(color = city_state))
-```
+  homicide_data_estimates_clean %>% 
+  mutate(
+    city_state = forcats::fct_reorder(city_state,estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate*100)) +
+  geom_point() + geom_errorbar(aes(ymax = conf.high*100, ymin = conf.low*100)) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(
+    title = "Figure 1. Plot of Unsolved Murder Proportion by City, State",
+    x = "",
+    y = "Prop. Murders Unsolved",
+    caption = "Data from 2008 - 2018"
+  )
 
+estimates_plot
+```
 
 
 # Problem 3
-```{r mu = 0, include = TRUE, message = FALSE, echo = FALSE}
-mean_ttest = function(n = 30, mu = 0, sigma = 5) {  
-  prob3_data = tibble(
-    x = rnorm(n, mean = mu, sd = sigma),
-    )
-  
-  prob3_data %>% 
-    summarize(
-      mu_sample = mean(x)
-    )
-}
-  
-  t_test = t.test(x, alternative = "two.sided", mu = 0, paired = FALSE, alpha = 0.05) %>%
-        broom::tidy()
-  
-prob3_df_mean0 = 
-  expand_grid(
-    mu = 0,
-    iter = 1:5000
-  ) %>% 
-  mutate(
-    estimate_df = map(mu, mean_ttest)) %>% 
-  unnest(estimate_df)
-```
-
-```{r, mu varies from 0 - 6, include = TRUE, message = FALSE, echo = FALSE}
-prob3_df = 
-  expand_grid(
-    sample_size = 30,
-    mean = c(0,1,2,3,4,5,6),
-    iter = 1:5000
-  ) %>% 
-  mutate(
-    estimate_df = map(mean, mean_ttest)) %>% 
-  unnest(estimate_df)
-
-
-prob3_df %>% 
-  mutate(
-    significant = if_else(t_test$p.value < 0.05, TRUE, FALSE)
-  ) %>% 
-  group_by(mean, significant) %>% 
-  summarize(
-    n = n())
-```
-
-y-axis should be power, which is = 1 - beta. Beta is the chance of making a type II error (i.e. false negative rate). Thus, y-axis should be the proportion of 
-
-```{r}
-sim_results_test = 
-  expand_grid(
-    mu = c(6),
-    iter = 1:5000
-  ) %>% 
-  mutate(
-    estimate_df = map(mu, sim_mean_sd)
-  ) %>% 
-  unnest(estimate_df)
-```
-
